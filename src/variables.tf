@@ -3,13 +3,18 @@
 #
 
 variable "category" {
-    default = "nwk-spoke-xx"
+    default = "nwk-spoke"
     description = "The name of the category that all the resources are running in."
 }
 
 variable "environment" {
     default = "production"
     description = "The name of the environment that all the resources are running in."
+}
+
+variable "spoke_id" {
+    default = "01"
+    description = "The ID of the spoke."
 }
 
 #
