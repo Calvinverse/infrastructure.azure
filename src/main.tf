@@ -100,7 +100,7 @@ locals {
 data "azurerm_client_config" "current" {}
 
 locals {
-  network_watcher_name = "NetworkWatcher_${local.location_short}"
+  network_watcher_name = "NetworkWatcher_${var.location}"
   network_watcher_resource_group = "NetworkWatcherRG"
 
   hub_resource_group = "p-aue-tf-nwk-hub-rg"
