@@ -98,6 +98,93 @@ locals {
   }
 }
 
+# Network security rules
+locals {
+  default_nsg_rule = {
+    direction                                  = "Inbound"
+    access                                     = "Allow"
+    protocol                                   = "Tcp"
+    description                                = null
+    source_port_range                          = null
+    source_port_ranges                         = null
+    destination_port_range                     = null
+    destination_port_ranges                    = null
+    source_address_prefix                      = null
+    source_address_prefixes                    = null
+    source_application_security_group_ids      = null
+    destination_address_prefix                 = null
+    destination_address_prefixes               = null
+    destination_application_security_group_ids = null
+  }
+  default_nsg_rules = [
+    {
+      name                       = "allow-load-balancer"
+      source_port_range          = "*"
+      destination_port_range     = "*"
+      source_address_prefix      = "AzureLoadBalancer"
+      destination_address_prefix = "*"
+    },
+    {
+      name                       = "deny-other"
+      access                     = "Deny"
+      protocol                   = "*"
+      source_port_range          = "*"
+      destination_port_range     = "*"
+      source_address_prefix      = "VirtualNetwork"
+      destination_address_prefix = "VirtualNetwork"
+    }
+  ]
+
+  merged_nsg_rules = flatten([
+    for nsg in var.management_nsg_rules : merge(local.default_nsg_rule, nsg)
+  ])
+}
+
+# Diagnostics
+locals {
+  diag_vnet_logs = [
+    "VMProtectionAlerts",
+  ]
+  diag_vnet_metrics = [
+    "AllMetrics",
+  ]
+  diag_nsg_logs = [
+    "NetworkSecurityGroupEvent",
+    "NetworkSecurityGroupRuleCounter",
+  ]
+  diag_pip_logs = [
+    "DDoSProtectionNotifications",
+    "DDoSMitigationFlowLogs",
+    "DDoSMitigationReports",
+  ]
+  diag_pip_metrics = [
+    "AllMetrics",
+  ]
+  diag_fw_logs = [
+    "AzureFirewallApplicationRule",
+    "AzureFirewallNetworkRule",
+  ]
+  diag_fw_metrics = [
+    "AllMetrics",
+  ]
+
+  diag_all_logs = setunion(
+    local.diag_vnet_logs,
+    local.diag_nsg_logs,
+    local.diag_pip_logs,
+  local.diag_fw_logs)
+  diag_all_metrics = setunion(
+    local.diag_vnet_metrics,
+    local.diag_pip_metrics,
+  local.diag_fw_metrics)
+
+  parsed_diag = {
+    log_analytics_id   = "e1c46677-b6e1-4c5a-8983-bfecd30e5061"
+    metric             = local.diag_all_metrics
+    log                = local.diag_all_logs
+    }
+}
+
 data "azurerm_client_config" "current" {}
 
 locals {
@@ -106,6 +193,7 @@ locals {
 
   hub_resource_group = "p-aue-tf-nwk-hub-rg"
   hub_dns_zone_name = "hub.azure.calvinverse.net"
+  hub_virtual_network = "p-aue-tf-nwk-hub-vn"
 }
 
 data "azurerm_log_analytics_workspace" "log_analytics_workspace" {
@@ -115,7 +203,7 @@ data "azurerm_log_analytics_workspace" "log_analytics_workspace" {
 }
 
 data "azurerm_virtual_network" "hub" {
-  name = "p-aue-tf-nwk-hub-vn"
+  name = local.hub_virtual_network
   provider = azurerm.production
   resource_group_name = local.hub_resource_group
 }
@@ -210,7 +298,7 @@ resource "azurerm_monitor_diagnostic_setting" "vnet" {
   count    = 1
   name = "${local.name_prefix_tf}-mds-vnet"
   target_resource_id    = azurerm_virtual_network.vnet.id
-  log_analytics_workspace_id = local.parsed_diag.log_analytics_id
+  log_analytics_workspace_id = data.azurerm_log_analytics_workspace.log_analytics_workspace.id
 
   dynamic "log" {
     for_each = setintersection(local.parsed_diag.log, local.diag_vnet_logs)
@@ -240,12 +328,14 @@ resource "azurerm_monitor_diagnostic_setting" "vnet" {
 #
 
 resource "azurerm_subnet" "vnet" {
+  address_prefixes = [ cidrsubnet(var.address_space, 0, 0) ]
   name = "${local.name_prefix_tf}-sn"
   resource_group_name = azurerm_resource_group.rg.name
   virtual_network_name = azurerm_virtual_network.vnet.name
-  address_prefix = [ cidrsubnet(var.address_space, 0, 0) ]
 
-  service_endpoints = each.value.service_endpoints
+  service_endpoints = [
+    "Microsoft.Storage",
+  ]
 }
 
 #
@@ -281,7 +371,6 @@ resource "azurerm_network_watcher_flow_log" "vnet" {
   enabled = true
   network_security_group_id = azurerm_network_security_group.vnet.id
   network_watcher_name = local.network_watcher_name
-  provider = azurerm.production
   resource_group_name = local.network_watcher_resource_group
   storage_account_id = azurerm_storage_account.storage.id
 
@@ -300,31 +389,35 @@ resource "azurerm_network_watcher_flow_log" "vnet" {
 }
 
 resource "azurerm_network_security_rule" "vnet" {
-  resource_group_name = azurerm_resource_group.rg.name
-  network_security_group_name = azurerm_network_security_group.vnet.name
-  priority  = each.value.priority
+  access = local.merged_nsg_rules[count.index].access
+  count = length(local.merged_nsg_rules)
 
-  name   = each.value.rule.name
-  direction   = each.value.rule.direction
-  access = each.value.rule.access
-  protocol    = each.value.rule.protocol
-  description = each.value.rule.description
-  source_port_range    = each.value.rule.source_port_range
-  source_port_ranges   = each.value.rule.source_port_ranges
-  destination_port_range   = each.value.rule.destination_port_range
-  destination_port_ranges  = each.value.rule.destination_port_ranges
-  source_address_prefix    = each.value.rule.source_address_prefix
-  source_address_prefixes  = each.value.rule.source_address_prefixes
-  source_application_security_group_ids  = each.value.rule.source_application_security_group_ids
-  destination_address_prefix    = each.value.rule.destination_address_prefix
-  destination_address_prefixes  = each.value.rule.destination_address_prefixes
-  destination_application_security_group_ids = each.value.rule.destination_application_security_group_ids
+  description = local.merged_nsg_rules[count.index].description
+
+  destination_address_prefix = local.merged_nsg_rules[count.index].destination_address_prefix
+  destination_address_prefixes = local.merged_nsg_rules[count.index].destination_address_prefixes
+  destination_application_security_group_ids = local.merged_nsg_rules[count.index].destination_application_security_group_ids
+  destination_port_range = local.merged_nsg_rules[count.index].destination_port_range
+  destination_port_ranges = local.merged_nsg_rules[count.index].destination_port_ranges
+
+  direction = local.merged_nsg_rules[count.index].direction
+  name = local.merged_nsg_rules[count.index].name
+  network_security_group_name = azurerm_network_security_group.vnet.name
+  priority = 100 + 100 * count.index
+  protocol = local.merged_nsg_rules[count.index].protocol
+  resource_group_name = azurerm_resource_group.rg.name
+
+  source_address_prefix = local.merged_nsg_rules[count.index].source_address_prefix
+  source_address_prefixes = local.merged_nsg_rules[count.index].source_address_prefixes
+  source_application_security_group_ids = local.merged_nsg_rules[count.index].source_application_security_group_ids
+  source_port_range = local.merged_nsg_rules[count.index].source_port_range
+  source_port_ranges = local.merged_nsg_rules[count.index].source_port_ranges
 }
 
 resource "azurerm_monitor_diagnostic_setting" "nsg" {
-  log_analytics_workspace_id = local.parsed_diag.log_analytics_id
+  log_analytics_workspace_id = data.azurerm_log_analytics_workspace.log_analytics_workspace.id
   name = "${local.name_prefix_tf}-mds-nsg"
-  target_resource_id    = azurerm_network_security_group.vnet.id
+  target_resource_id = azurerm_network_security_group.vnet.id
 
   dynamic "log" {
     for_each = setintersection(local.parsed_diag.log, local.diag_nsg_logs)
@@ -348,8 +441,8 @@ resource "azurerm_subnet_network_security_group_association" "vnet" {
 #
 
 resource "azurerm_private_dns_zone_virtual_network_link" "main" {
-  name = "${local.name_prefix_tf}-dnsl-spoke"
-  private_dns_zone_name = local.private_dns_link
+  name = "${local.name_prefix_tf}-dnsl"
+  private_dns_zone_name = local.hub_dns_zone_name
   provider = azurerm.production
   registration_enabled = true
   resource_group_name = local.hub_resource_group
@@ -363,7 +456,7 @@ resource "azurerm_private_dns_zone_virtual_network_link" "main" {
 #
 
 resource "azurerm_virtual_network_peering" "spoke-to-hub" {
-  name = "${local.name_prefix_tf}-vnp-spoke-hub"
+  name = "${local.name_prefix_tf}-vnp-to-hub"
   resource_group_name = azurerm_resource_group.rg.name
   virtual_network_name = azurerm_virtual_network.vnet.name
   remote_virtual_network_id = data.azurerm_virtual_network.hub.id
@@ -376,10 +469,10 @@ resource "azurerm_virtual_network_peering" "spoke-to-hub" {
 }
 
 resource "azurerm_virtual_network_peering" "hub-to-spoke" {
-  provider   = azurerm.production
-  name = "${local.name_prefix_tf}-vnp-hub-spoke"
+  provider = azurerm.production
+  name = "${local.name_prefix_tf}-vnp-from-hub"
   resource_group_name = local.hub_resource_group
-  virtual_network_name = data.azurerm_virtual_network.hub.id
+  virtual_network_name = local.hub_virtual_network
   remote_virtual_network_id = azurerm_virtual_network.vnet.id
   allow_virtual_network_access = true
   allow_forwarded_traffic  = true
