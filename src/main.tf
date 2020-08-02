@@ -214,6 +214,10 @@ data "azurerm_virtual_network" "hub" {
   resource_group_name = local.hub_resource_group
 }
 
+data "azurerm_subscription" "target" {
+    subscription_id = var.environment == "production" ? var.subscription_production : var.subscription_test
+}
+
 #
 # Resource group
 #
@@ -494,13 +498,13 @@ resource "azurerm_virtual_network_peering" "hub-to-spoke" {
 
 resource "azuread_group" "consul_server_discovery" {
   description = "The collection of users who are allowed to discover Consul server nodes on the network."
-  name = "${local.name_prefix_tf}-consul-cloud-join"
+  name = "${local.name_prefix_tf}-adg-consul-cloud-join"
   prevent_duplicate_names = true
 }
 
 resource "azurerm_role_definition" "consul_server_discovery" {
     description = "A custom role that allows Consul nodes to discover the server nodes in their environment."
-    name = "${local.name_prefix_tf}-consul-cloud-join"
+    name = "${local.name_prefix_tf}-rd-consul-cloud-join"
     scope = azurerm_virtual_network.vnet.id
 
     permissions {
@@ -511,7 +515,7 @@ resource "azurerm_role_definition" "consul_server_discovery" {
     }
 
     assignable_scopes = [
-        var.environment == "production" ? var.subscription_production : var.subscription_test,
+        azurerm_virtual_network.vnet.id
     ]
 }
 
