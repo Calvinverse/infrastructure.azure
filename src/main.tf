@@ -23,6 +23,12 @@ provider "azurerm" {
     version = "~>2.18.0"
 }
 
+provider "azuread" {
+  version = "=0.11.0"
+
+  subscription_id = var.environment == "production" ? var.subscription_production : var.subscription_test
+}
+
 
 #
 # LOCALS
@@ -207,7 +213,6 @@ data "azurerm_virtual_network" "hub" {
   provider = azurerm.production
   resource_group_name = local.hub_resource_group
 }
-
 
 #
 # Resource group
@@ -480,4 +485,38 @@ resource "azurerm_virtual_network_peering" "hub-to-spoke" {
   use_remote_gateways = false
 
   depends_on = [azurerm_virtual_network_peering.spoke-to-hub]
+}
+
+#
+# Permissions for Consul server discovery via Azure
+# see: https://www.consul.io/docs/agent/cloud-auto-join
+#
+
+resource "azuread_group" "consul_server_discovery" {
+  description = "The collection of users who are allowed to discover Consul server nodes on the network."
+  name = "${local.name_prefix_tf}-consul-cloud-join"
+  prevent_duplicate_names = true
+}
+
+resource "azurerm_role_definition" "consul_server_discovery" {
+    description = "A custom role that allows Consul nodes to discover the server nodes in their environment."
+    name = "${local.name_prefix_tf}-consul-cloud-join"
+    scope = azurerm_virtual_network.vnet.id
+
+    permissions {
+        actions = [
+            "Microsoft.Network/networkInterfaces/read"
+        ]
+        not_actions = []
+    }
+
+    assignable_scopes = [
+        var.environment == "production" ? var.subscription_production : var.subscription_test,
+    ]
+}
+
+resource "azurerm_role_assignment" "consul_server_discovery" {
+    principal_id  = azuread_group.consul_server_discovery.id
+    role_definition_id = azurerm_role_definition.consul_server_discovery.id
+    scope = azurerm_virtual_network.vnet.id
 }
