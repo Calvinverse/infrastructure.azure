@@ -59,32 +59,6 @@ variable "private_dns_zone" {
 }
 
 #
-# NETWORK - SECURITY RULES
-#
-
-variable "dmz_nsg_rules" {
-  description = "Network security rules to add to dmz subnet. See README for details on how to setup."
-  type = list(any)
-  default = []
-}
-
-variable "management_nsg_rules" {
-  description = "Network security rules to add to management subnet. See README for details on how to setup."
-  type = list(any)
-  default = []
-}
-
-#
-# PEERING
-#
-
-variable "peering_assignment" {
-  description = "List of principal ids that should have access to peer to this Hub network. All service principals used to deploy spoke networks should have access to peer."
-  type = list(string)
-  default = []
-}
-
-#
 # SUBSCRIPTIONS
 #
 
