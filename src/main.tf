@@ -568,26 +568,3 @@ resource "azuread_group" "consul_server_discovery" {
     name = "${local.name_prefix_tf}-adg-consul-cloud-join"
     prevent_duplicate_names = true
 }
-
-resource "azurerm_role_definition" "consul_server_discovery" {
-    description = "A custom role that allows Consul nodes to discover the server nodes in their environment."
-    name = "${local.name_prefix_tf}-rd-consul-cloud-join"
-    scope = azurerm_virtual_network.vnet.id
-
-    permissions {
-        actions = [
-            "Microsoft.Network/networkInterfaces/read"
-        ]
-        not_actions = []
-    }
-
-    assignable_scopes = [
-        azurerm_virtual_network.vnet.id
-    ]
-}
-
-resource "azurerm_role_assignment" "consul_server_discovery" {
-    principal_id  = azuread_group.consul_server_discovery.id
-    role_definition_id = azurerm_role_definition.consul_server_discovery.id
-    scope = azurerm_virtual_network.vnet.id
-}
