@@ -315,22 +315,157 @@ resource "azurerm_key_vault" "keys" {
         tenant_id = data.azurerm_client_config.current.tenant_id
         object_id = data.azurerm_client_config.current.object_id
 
-        key_permissions = [
-    "get",
+        certificate_permissions = [
+            "backup",
+            "create",
+            "delete",
+            "deleteissuers",
+            "get",
+            "getissuers",
+            "import",
+            "list",
+            "listissuers",
+            "managecontacts",
+            "manageissuers",
+            "purge",
+            "recover",
+            "restore",
+            "setissuers",
+            "update",
         ]
 
-        secret_permissions = [
-    "get",
+            key_permissions = [
+            "backup",
+            "create",
+            "decrypt",
+            "delete",
+            "encrypt",
+            "get",
+            "import",
+            "list",
+            "purge",
+            "recover",
+            "restore",
+            "sign",
+            "unwrapKey",
+            "update",
+            "verify",
+            "wrapKey"
         ]
 
-        storage_permissions = [
-    "get",
+            secret_permissions = [
+            "backup",
+            "delete",
+            "get",
+            "list",
+            "purge",
+            "recover",
+            "restore",
+            "set"
+        ]
+
+            storage_permissions = [
+            "backup",
+            "delete",
+            "deletesas",
+            "get",
+            "getsas",
+            "list",
+            "listsas",
+            "purge",
+            "recover",
+            "regeneratekey",
+            "restore",
+            "set",
+            "setsas",
+            "update"
         ]
     }
 
-    network_acls {
-        default_action = "Deny"
-        bypass = "AzureServices"
+    tags = merge( local.common_tags, local.extra_tags, var.tags )
+}
+
+# key vault to store certificates and consul tokens
+resource "azurerm_key_vault" "infrastructure" {
+    enabled_for_deployment  = true
+    enabled_for_disk_encryption = true
+    location  = var.location
+    name  = "${local.name_prefix_tf}-kv-infra"
+    purge_protection_enabled    = false
+    resource_group_name = azurerm_resource_group.rg.name
+    sku_name = "standard"
+    soft_delete_enabled = false
+    tenant_id = data.azurerm_client_config.current.tenant_id
+
+    access_policy {
+        tenant_id = data.azurerm_client_config.current.tenant_id
+        object_id = data.azurerm_client_config.current.object_id
+
+        certificate_permissions = [
+            "backup",
+            "create",
+            "delete",
+            "deleteissuers",
+            "get",
+            "getissuers",
+            "import",
+            "list",
+            "listissuers",
+            "managecontacts",
+            "manageissuers",
+            "purge",
+            "recover",
+            "restore",
+            "setissuers",
+            "update",
+        ]
+
+            key_permissions = [
+            "backup",
+            "create",
+            "decrypt",
+            "delete",
+            "encrypt",
+            "get",
+            "import",
+            "list",
+            "purge",
+            "recover",
+            "restore",
+            "sign",
+            "unwrapKey",
+            "update",
+            "verify",
+            "wrapKey"
+        ]
+
+            secret_permissions = [
+            "backup",
+            "delete",
+            "get",
+            "list",
+            "purge",
+            "recover",
+            "restore",
+            "set"
+        ]
+
+            storage_permissions = [
+            "backup",
+            "delete",
+            "deletesas",
+            "get",
+            "getsas",
+            "list",
+            "listsas",
+            "purge",
+            "recover",
+            "regeneratekey",
+            "restore",
+            "set",
+            "setsas",
+            "update"
+        ]
     }
 
     tags = merge( local.common_tags, local.extra_tags, var.tags )
@@ -410,6 +545,8 @@ resource "azurerm_subnet" "vnet" {
     virtual_network_name = azurerm_virtual_network.vnet.name
 
     service_endpoints = [
+        "Microsoft.ContainerRegistry",
+        "Microsoft.KeyVault",
         "Microsoft.Storage",
     ]
 }
